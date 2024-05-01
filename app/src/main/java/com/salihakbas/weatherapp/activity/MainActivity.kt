@@ -1,26 +1,33 @@
 package com.salihakbas.weatherapp.activity
 
+import android.content.Intent
 import android.graphics.Color
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.github.matteobattilana.weather.PrecipType
 import com.salihakbas.weatherapp.R
+import com.salihakbas.weatherapp.adapter.ForecastAdapter
 import com.salihakbas.weatherapp.databinding.ActivityMainBinding
 import com.salihakbas.weatherapp.model.CurrentResponseApi
+import com.salihakbas.weatherapp.model.ForecastResponseApi
 import com.salihakbas.weatherapp.viewmodel.WeatherViewModel
+import eightbitlab.com.blurview.RenderScriptBlur
 import retrofit2.Call
 import retrofit2.Response
 import java.util.Calendar
-import javax.security.auth.callback.Callback
 
 class MainActivity : AppCompatActivity() {
     lateinit var binding: ActivityMainBinding
     private val weatherViewModel: WeatherViewModel by viewModels()
     private val calendar by lazy { Calendar.getInstance() }
+    private val forecastAdapter by lazy { ForecastAdapter() }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -33,12 +40,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.apply {
-            var lat = 41.002697
-            var lon = 39.716763
-            var name = "Trabzon"
+            var lat = intent.getDoubleExtra("lat", 0.0)
+            var lon = intent.getDoubleExtra("lon", 0.0)
+            var name = intent.getStringExtra("name")
+            if (lat == 0.0) {
+                 lat = 41.002697
+                 lon = -39.716763
+                 name = "Trabzon"
+            }
+
+            addCity.setOnClickListener {
+                startActivity(Intent(this@MainActivity, CityListActivity::class.java))
+            }
+
+
 
             cityTxt.text = name
-
+            //Current Temp
             weatherViewModel.loadCurrentWeather(lat, lon, "metric").enqueue(object :
                 retrofit2.Callback<CurrentResponseApi> {
                 override fun onResponse(
@@ -51,7 +69,7 @@ class MainActivity : AppCompatActivity() {
                         data?.let {
                             statusTxt.text = it.weather?.get(0)?.main ?: "-"
                             windTxt.text = it.wind?.speed?.let { Math.round(it).toString() } + "Km"
-                            humidityTxt.text = it.main?.humidity?.toString()+"%"
+                            humidityTxt.text = it.main?.humidity?.toString() + "%"
                             currentTempTxt.text = it.main?.temp?.let { Math.round(it).toString() }
                             maxTempTxt.text = it.main?.tempMax?.let { Math.round(it).toString() }
                             minTempTxt.text = it.main?.tempMin?.let { Math.round(it).toString() }
@@ -72,6 +90,52 @@ class MainActivity : AppCompatActivity() {
                 }
 
             })
+
+            //Settings Blur View
+            var radius = 10f
+            val decorView = window.decorView
+            val rootView = (decorView.findViewById(android.R.id.content) as ViewGroup?)
+            val windowBackground = decorView.background
+
+            rootView?.let {
+                blurView.setupWith(it, RenderScriptBlur(this@MainActivity))
+                    .setFrameClearDrawable(windowBackground)
+                    .setBlurRadius(radius)
+
+                blurView.outlineProvider = ViewOutlineProvider.BACKGROUND
+                blurView.clipToOutline = true
+            }
+
+            //Forecast Temp
+            weatherViewModel.loadForecastWeather(lat, lon, "metric")
+                .enqueue(object : retrofit2.Callback<ForecastResponseApi> {
+                    override fun onResponse(
+                        call: Call<ForecastResponseApi>,
+                        response: Response<ForecastResponseApi>
+                    ) {
+                        if (response.isSuccessful) {
+                            val data = response.body()
+                            blurView.visibility = View.VISIBLE
+
+                            data?.let {
+                                forecastAdapter.differ.submitList(it.list)
+                                forecastView.apply {
+                                    layoutManager = LinearLayoutManager(
+                                        this@MainActivity,
+                                        LinearLayoutManager.HORIZONTAL,
+                                        false
+                                    )
+                                    adapter = forecastAdapter
+                                }
+                            }
+                        }
+                    }
+
+                    override fun onFailure(call: Call<ForecastResponseApi>, t: Throwable) {
+                        TODO("Not yet implemented")
+                    }
+
+                })
         }
 
     }
